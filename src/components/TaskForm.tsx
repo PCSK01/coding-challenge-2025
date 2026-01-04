@@ -11,7 +11,7 @@
  * - 表单验证
  */
 
-import { useState, useCallback, FormEvent } from 'react';
+import { useState, useCallback, useEffect, FormEvent } from 'react';
 import { Task, TaskCategory, TaskPriority, TaskStatus, CreateTaskInput } from '../types';
 
 /**
@@ -123,6 +123,16 @@ export function TaskForm({
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   const isEditMode = !!initialTask;
+
+  /**
+   * 当 initialTask 变化时，更新表单数据
+   * 修复：点击编辑时原始内容不呈现的问题
+   */
+  useEffect(() => {
+    setFormData(getInitialFormData(initialTask));
+    setErrors({});
+    setTouched({});
+  }, [initialTask]);
 
   /**
    * 验证表单
