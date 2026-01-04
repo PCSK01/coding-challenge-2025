@@ -6,7 +6,7 @@
  * 包含输入验证（标题非空、日期有效性）。
  */
 
-import { Task, TaskStatus, CreateTaskInput, UpdateTaskInput } from '../types';
+import { Task, TaskStatus, CreateTaskInput, UpdateTaskInput, ReminderOption } from '../types';
 
 /**
  * 任务验证错误类型
@@ -98,6 +98,7 @@ export class TaskService {
       priority: taskData.priority,
       status: taskData.status,
       dueDate: taskData.dueDate,
+      reminderOption: taskData.reminderOption ?? ReminderOption.NONE,
       createdAt: now,
       updatedAt: now,
       notificationSent: false,

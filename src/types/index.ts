@@ -7,6 +7,8 @@ export {
   TaskCategory,
   TaskPriority,
   TaskStatus,
+  ReminderOption,
+  REMINDER_ADVANCE_TIME,
   type Task,
   type CreateTaskInput,
   type UpdateTaskInput

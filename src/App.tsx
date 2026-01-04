@@ -126,8 +126,7 @@ function App() {
     permissionStatus,
     isSupported: isNotificationSupported,
     requestPermission,
-    startChecking,
-    stopChecking,
+    updateTasks,
   } = useNotification({
     checkInterval: 60000, // 每分钟检查一次
     onInAppReminder: handleInAppReminder,
@@ -142,14 +141,11 @@ function App() {
   }, []);
 
   /**
-   * 启动通知检查
+   * 启动通知检查 - 当任务列表变化时更新
    */
   useEffect(() => {
-    if (tasks.length > 0) {
-      startChecking(tasks);
-    }
-    return () => stopChecking();
-  }, [tasks, startChecking, stopChecking]);
+    updateTasks(tasks);
+  }, [tasks, updateTasks]);
 
   /**
    * 处理错误显示
@@ -208,6 +204,8 @@ function App() {
         priority: taskData.priority,
         status: taskData.status,
         dueDate: taskData.dueDate,
+        reminderOption: taskData.reminderOption,
+        notificationSent: false, // 更新任务时重置通知状态
       };
       const success = await updateTask(editingTask.id, updates);
       if (success) {

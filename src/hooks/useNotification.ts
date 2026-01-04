@@ -40,11 +40,9 @@ export interface UseNotificationReturn {
   /** 请求通知权限 */
   requestPermission: () => Promise<NotificationPermissionStatus>;
   /** 手动检查任务提醒 */
-  checkReminders: (tasks: Task[]) => void;
-  /** 开始定时检查 */
-  startChecking: (tasks: Task[]) => void;
-  /** 停止定时检查 */
-  stopChecking: () => void;
+  checkReminders: () => void;
+  /** 更新任务列表 */
+  updateTasks: (tasks: Task[]) => void;
   /** 是否正在检查 */
   isChecking: boolean;
 }
@@ -79,6 +77,14 @@ export function useNotification(options: UseNotificationOptions = {}): UseNotifi
   
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tasksRef = useRef<Task[]>([]);
+  const onInAppReminderRef = useRef<InAppReminderCallback | undefined>(onInAppReminder);
+  const onTasksNotifiedRef = useRef<((taskIds: string[]) => void) | undefined>(onTasksNotified);
+
+  // 更新回调引用
+  useEffect(() => {
+    onInAppReminderRef.current = onInAppReminder;
+    onTasksNotifiedRef.current = onTasksNotified;
+  }, [onInAppReminder, onTasksNotified]);
 
   // 检查是否支持通知
   const isSupported = notificationService.isSupported();
@@ -94,13 +100,24 @@ export function useNotification(options: UseNotificationOptions = {}): UseNotifi
   }, []);
 
   /**
+   * 更新任务列表（供外部调用）
+   */
+  const updateTasks = useCallback((tasks: Task[]) => {
+    console.log('[useNotification] Updating tasks ref, count:', tasks.length);
+    tasksRef.current = tasks;
+  }, []);
+
+  /**
    * 检查任务提醒
    * 需求: 8.1, 8.5
    */
-  const checkReminders = useCallback((tasks: Task[]) => {
+  const checkReminders = useCallback(() => {
+    const tasks = tasksRef.current;
+    console.log('[useNotification] checkReminders called, tasks count:', tasks.length);
+    
     // 设置应用内提醒回调
-    if (onInAppReminder) {
-      notificationService.setInAppReminderCallback(onInAppReminder);
+    if (onInAppReminderRef.current) {
+      notificationService.setInAppReminderCallback(onInAppReminderRef.current);
     }
 
     // 处理任务提醒
@@ -110,45 +127,34 @@ export function useNotification(options: UseNotificationOptions = {}): UseNotifi
     setPendingReminders(notifiedTasks);
 
     // 如果有任务被通知，调用回调更新状态
-    if (notifiedTasks.length > 0 && onTasksNotified) {
-      onTasksNotified(notifiedTasks.map(t => t.id));
+    if (notifiedTasks.length > 0 && onTasksNotifiedRef.current) {
+      console.log('[useNotification] Notifying tasks:', notifiedTasks.map(t => t.title));
+      onTasksNotifiedRef.current(notifiedTasks.map(t => t.id));
     }
-  }, [onInAppReminder, onTasksNotified]);
+  }, []);
 
-  /**
-   * 开始定时检查
-   * 需求: 8.5
-   */
-  const startChecking = useCallback((tasks: Task[]) => {
-    // 保存任务引用
-    tasksRef.current = tasks;
+  // 启动定时检查
+  useEffect(() => {
+    console.log('[useNotification] Starting interval check, interval:', checkInterval);
     
-    // 如果已经在检查，先停止
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-
     // 立即执行一次检查
-    checkReminders(tasks);
+    checkReminders();
 
     // 设置定时检查
     intervalRef.current = setInterval(() => {
-      checkReminders(tasksRef.current);
+      checkReminders();
     }, checkInterval);
 
     setIsChecking(true);
-  }, [checkInterval, checkReminders]);
 
-  /**
-   * 停止定时检查
-   */
-  const stopChecking = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    setIsChecking(false);
-  }, []);
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      setIsChecking(false);
+    };
+  }, [checkInterval, checkReminders]);
 
   // 自动请求权限
   useEffect(() => {
@@ -156,15 +162,6 @@ export function useNotification(options: UseNotificationOptions = {}): UseNotifi
       requestPermission();
     }
   }, [autoRequestPermission, permissionStatus, requestPermission]);
-
-  // 清理定时器
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, []);
 
   // 监听权限变化（某些浏览器支持）
   useEffect(() => {
@@ -191,8 +188,7 @@ export function useNotification(options: UseNotificationOptions = {}): UseNotifi
     pendingReminders,
     requestPermission,
     checkReminders,
-    startChecking,
-    stopChecking,
+    updateTasks,
     isChecking,
   };
 }

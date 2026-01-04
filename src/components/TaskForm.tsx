@@ -12,7 +12,7 @@
  */
 
 import { useState, useCallback, useEffect, FormEvent } from 'react';
-import { Task, TaskCategory, TaskPriority, TaskStatus, CreateTaskInput } from '../types';
+import { Task, TaskCategory, TaskPriority, TaskStatus, CreateTaskInput, ReminderOption } from '../types';
 
 /**
  * TaskForm 组件属性
@@ -36,7 +36,8 @@ interface FormData {
   description: string;
   category: TaskCategory;
   priority: TaskPriority;
-  dueDate: string; // 使用字符串格式便于 input[type="date"] 处理
+  dueDateTime: string; // 使用 datetime-local 格式 YYYY-MM-DDTHH:mm
+  reminderOption: ReminderOption;
 }
 
 /**
@@ -67,22 +68,39 @@ const PRIORITY_OPTIONS: { value: TaskPriority; label: string; color: string }[] 
 ];
 
 /**
- * 格式化日期为 input[type="date"] 格式 (YYYY-MM-DD)
+ * 提醒选项
  */
-function formatDateForInput(date: Date | null): string {
+const REMINDER_OPTIONS: { value: ReminderOption; label: string }[] = [
+  { value: ReminderOption.NONE, label: '不提醒' },
+  { value: ReminderOption.AT_TIME, label: '到期时' },
+  { value: ReminderOption.FIVE_MIN, label: '5分钟前' },
+  { value: ReminderOption.FIFTEEN_MIN, label: '15分钟前' },
+  { value: ReminderOption.THIRTY_MIN, label: '30分钟前' },
+  { value: ReminderOption.ONE_HOUR, label: '1小时前' },
+  { value: ReminderOption.TWO_HOURS, label: '2小时前' },
+  { value: ReminderOption.ONE_DAY, label: '1天前' },
+];
+
+/**
+ * 格式化日期为 input[type="datetime-local"] 格式 (YYYY-MM-DDTHH:mm)
+ */
+function formatDateTimeForInput(date: Date | null): string {
   if (!date) return '';
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
 /**
- * 解析 input[type="date"] 格式的日期字符串
+ * 解析 datetime-local 字符串为 Date 对象
  */
-function parseDateFromInput(dateStr: string): Date | null {
-  if (!dateStr) return null;
-  const date = new Date(dateStr + 'T00:00:00');
+function parseDateTimeFromInput(dateTimeStr: string): Date | null {
+  if (!dateTimeStr) return null;
+  const date = new Date(dateTimeStr);
   return isNaN(date.getTime()) ? null : date;
 }
 
@@ -96,7 +114,8 @@ function getInitialFormData(initialTask?: Task): FormData {
       description: initialTask.description,
       category: initialTask.category,
       priority: initialTask.priority,
-      dueDate: formatDateForInput(initialTask.dueDate),
+      dueDateTime: formatDateTimeForInput(initialTask.dueDate),
+      reminderOption: initialTask.reminderOption || ReminderOption.NONE,
     };
   }
   return {
@@ -104,7 +123,8 @@ function getInitialFormData(initialTask?: Task): FormData {
     description: '',
     category: TaskCategory.WORK,
     priority: TaskPriority.MEDIUM,
-    dueDate: '',
+    dueDateTime: '',
+    reminderOption: ReminderOption.NONE,
   };
 }
 
@@ -149,10 +169,10 @@ export function TaskForm({
     }
 
     // 验证截止日期（如果填写了，必须是有效日期）
-    if (formData.dueDate) {
-      const date = parseDateFromInput(formData.dueDate);
+    if (formData.dueDateTime) {
+      const date = parseDateTimeFromInput(formData.dueDateTime);
       if (!date) {
-        newErrors.dueDate = '请输入有效的日期';
+        newErrors.dueDate = '请输入有效的日期时间';
       }
     }
 
@@ -211,7 +231,8 @@ export function TaskForm({
       category: formData.category,
       priority: formData.priority,
       status: initialTask?.status ?? TaskStatus.PENDING,
-      dueDate: parseDateFromInput(formData.dueDate),
+      dueDate: parseDateTimeFromInput(formData.dueDateTime),
+      reminderOption: formData.dueDateTime ? formData.reminderOption : ReminderOption.NONE,
     };
 
     // 调用提交回调
@@ -374,26 +395,26 @@ export function TaskForm({
       </div>
 
 
-      {/* 截止日期 - 需求 1.6 */}
-      <div className="mb-6">
+      {/* 截止日期和时间 - 需求 1.6 */}
+      <div className="mb-4">
         <label 
-          htmlFor="dueDate" 
+          htmlFor="dueDateTime"
           className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
         >
-          截止日期
+          截止时间
         </label>
         <input
-          type="date"
-          id="dueDate"
-          name="dueDate"
-          value={formData.dueDate}
+          type="datetime-local"
+          id="dueDateTime"
+          name="dueDateTime"
+          value={formData.dueDateTime}
           onChange={handleChange}
           onBlur={handleBlur}
           disabled={isSubmitting}
           aria-invalid={touched.dueDate && !!errors.dueDate}
           aria-describedby={errors.dueDate ? 'dueDate-error' : undefined}
           className={`
-            w-full sm:w-auto px-3 py-2 rounded-md border transition-colors
+            w-full px-3 py-2 rounded-md border transition-colors
             focus:outline-none focus:ring-2 focus:ring-blue-500
             disabled:bg-gray-100 disabled:cursor-not-allowed
             dark:bg-gray-700 dark:text-white dark:border-gray-600
@@ -406,6 +427,40 @@ export function TaskForm({
         {touched.dueDate && errors.dueDate && (
           <p id="dueDate-error" className="mt-1 text-sm text-red-500" role="alert">
             {errors.dueDate}
+          </p>
+        )}
+      </div>
+
+      {/* 提醒设置 */}
+      <div className="mb-6">
+        <label 
+          htmlFor="reminderOption" 
+          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+        >
+          提醒时间
+        </label>
+        <select
+          id="reminderOption"
+          name="reminderOption"
+          value={formData.reminderOption}
+          onChange={handleChange}
+          disabled={isSubmitting || !formData.dueDateTime}
+          className="
+            w-full sm:w-auto px-3 py-2 rounded-md border border-gray-300 transition-colors
+            focus:outline-none focus:ring-2 focus:ring-blue-500
+            disabled:bg-gray-100 disabled:cursor-not-allowed
+            dark:bg-gray-700 dark:border-gray-600 dark:text-white
+          "
+        >
+          {REMINDER_OPTIONS.map(option => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {!formData.dueDateTime && (
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            请先设置截止时间
           </p>
         )}
       </div>

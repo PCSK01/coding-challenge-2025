@@ -9,7 +9,7 @@
  * - 权限被拒绝时的降级方案
  */
 
-import { Task, TaskStatus } from '../types/task';
+import { Task, TaskStatus, ReminderOption, REMINDER_ADVANCE_TIME } from '../types/task';
 
 /**
  * 通知权限状态类型
@@ -25,8 +25,6 @@ export type InAppReminderCallback = (tasks: Task[]) => void;
  * 通知服务配置
  */
 export interface NotificationServiceConfig {
-  /** 提前提醒时间（毫秒），默认 1 小时 */
-  reminderAdvanceTime: number;
   /** 应用内提醒回调（降级方案） */
   inAppReminderCallback?: InAppReminderCallback;
 }
@@ -34,9 +32,7 @@ export interface NotificationServiceConfig {
 /**
  * 默认配置
  */
-const DEFAULT_CONFIG: NotificationServiceConfig = {
-  reminderAdvanceTime: 60 * 60 * 1000, // 1 小时
-};
+const DEFAULT_CONFIG: NotificationServiceConfig = {};
 
 /**
  * 通知服务类
@@ -131,37 +127,62 @@ export class NotificationService {
    * 筛选条件：
    * 1. 任务设置了截止日期
    * 2. 任务未完成（status !== completed）
-   * 3. 当前时间接近截止日期（在提前提醒时间范围内）
-   * 4. 尚未发送过通知
+   * 3. 任务设置了提醒（reminderOption !== none）
+   * 4. 当前时间达到提醒时间点
+   * 5. 尚未发送过通知
    * 
    * @param tasks 任务列表
    * @returns 需要提醒的任务列表
    */
   checkTasksForNotification(tasks: Task[]): Task[] {
     const now = new Date().getTime();
-    const reminderThreshold = this.config.reminderAdvanceTime;
+    console.log('[NotificationService] Checking tasks for notification, count:', tasks.length, 'time:', new Date().toLocaleString());
 
     return tasks.filter((task) => {
       // 已完成的任务不通知 (需求 8.4)
       if (task.status === TaskStatus.COMPLETED) {
+        console.log('[NotificationService] Task skipped (completed):', task.title);
         return false;
       }
 
       // 没有截止日期的任务不通知
       if (!task.dueDate) {
+        console.log('[NotificationService] Task skipped (no dueDate):', task.title);
+        return false;
+      }
+
+      // 没有设置提醒的任务不通知
+      if (!task.reminderOption || task.reminderOption === ReminderOption.NONE) {
+        console.log('[NotificationService] Task skipped (no reminder):', task.title, 'reminderOption:', task.reminderOption);
         return false;
       }
 
       // 已经发送过通知的任务不再通知
       if (task.notificationSent) {
+        console.log('[NotificationService] Task skipped (already notified):', task.title);
+        return false;
+      }
+
+      // 获取该任务的提前提醒时间
+      const advanceTime = REMINDER_ADVANCE_TIME[task.reminderOption];
+      if (advanceTime < 0) {
+        console.log('[NotificationService] Task skipped (invalid advanceTime):', task.title);
         return false;
       }
 
       const dueTime = new Date(task.dueDate).getTime();
-      const timeUntilDue = dueTime - now;
-
-      // 截止日期已过或在提醒时间范围内
-      return timeUntilDue <= reminderThreshold && timeUntilDue > -reminderThreshold;
+      const reminderTime = dueTime - advanceTime;
+      
+      console.log('[NotificationService] Task time check:', task.title, {
+        now: new Date(now).toLocaleString(),
+        dueTime: new Date(dueTime).toLocaleString(),
+        reminderTime: new Date(reminderTime).toLocaleString(),
+        advanceTime: advanceTime / 1000 / 60 + ' minutes',
+        shouldNotify: now >= reminderTime && now <= dueTime + 60 * 60 * 1000,
+      });
+      
+      // 当前时间已经到达或超过提醒时间，且还没超过截止时间太久（1小时内）
+      return now >= reminderTime && now <= dueTime + 60 * 60 * 1000;
     });
   }
 
@@ -176,7 +197,15 @@ export class NotificationService {
    */
   sendTaskReminder(task: Task): boolean {
     const title = '任务提醒';
-    const body = `任务「${task.title}」即将到期`;
+    const dueTimeStr = task.dueDate 
+      ? new Date(task.dueDate).toLocaleString('zh-CN', { 
+          month: 'numeric', 
+          day: 'numeric', 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        })
+      : '';
+    const body = `任务「${task.title}」${dueTimeStr ? `将于 ${dueTimeStr} 到期` : '即将到期'}`;
     const options: NotificationOptions = {
       body,
       tag: `task-${task.id}`,
@@ -198,21 +227,28 @@ export class NotificationService {
   processTaskReminders(tasks: Task[]): Task[] {
     const tasksToRemind = this.checkTasksForNotification(tasks);
 
+    console.log('[NotificationService] Tasks to remind:', tasksToRemind.length);
+
     if (tasksToRemind.length === 0) {
       return [];
     }
 
     const permissionStatus = this.getPermissionStatus();
+    console.log('[NotificationService] Permission status:', permissionStatus);
 
     // 如果权限被授予，发送浏览器通知
     if (permissionStatus === 'granted') {
       tasksToRemind.forEach((task) => {
-        this.sendTaskReminder(task);
+        const sent = this.sendTaskReminder(task);
+        console.log('[NotificationService] Browser notification sent:', task.title, sent);
       });
     } 
     // 权限被拒绝或不支持时，触发应用内提醒回调 (需求 8.3)
     else if (this.inAppReminderCallback) {
+      console.log('[NotificationService] Triggering in-app reminder callback');
       this.inAppReminderCallback(tasksToRemind);
+    } else {
+      console.log('[NotificationService] No in-app reminder callback set');
     }
 
     return tasksToRemind;
@@ -238,13 +274,6 @@ export class NotificationService {
     if (config.inAppReminderCallback !== undefined) {
       this.inAppReminderCallback = config.inAppReminderCallback;
     }
-  }
-
-  /**
-   * 获取提前提醒时间（毫秒）
-   */
-  getReminderAdvanceTime(): number {
-    return this.config.reminderAdvanceTime;
   }
 }
 

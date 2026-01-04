@@ -12,7 +12,7 @@
  */
 
 import { useCallback, memo } from 'react';
-import { Task, TaskCategory, TaskPriority, TaskStatus } from '../types';
+import { Task, TaskCategory, TaskPriority, TaskStatus, ReminderOption } from '../types';
 
 /**
  * TaskItem 组件属性
@@ -71,15 +71,31 @@ const PRIORITY_CONFIG: Record<TaskPriority, { label: string; color: string; icon
 };
 
 /**
- * 格式化日期显示
+ * 提醒选项标签
  */
-function formatDate(date: Date | null): string {
+const REMINDER_LABELS: Record<ReminderOption, string> = {
+  [ReminderOption.NONE]: '',
+  [ReminderOption.AT_TIME]: '到期时提醒',
+  [ReminderOption.FIVE_MIN]: '5分钟前提醒',
+  [ReminderOption.FIFTEEN_MIN]: '15分钟前提醒',
+  [ReminderOption.THIRTY_MIN]: '30分钟前提醒',
+  [ReminderOption.ONE_HOUR]: '1小时前提醒',
+  [ReminderOption.TWO_HOURS]: '2小时前提醒',
+  [ReminderOption.ONE_DAY]: '1天前提醒',
+};
+
+/**
+ * 格式化日期时间显示
+ */
+function formatDateTime(date: Date | null): string {
   if (!date) return '';
   const d = new Date(date);
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
 /**
@@ -253,7 +269,7 @@ export const TaskItem = memo(function TaskItem({
                 {priorityConfig.label}优先级
               </span>
 
-              {/* 截止日期 */}
+              {/* 截止日期时间 */}
               {task.dueDate && (
                 <span 
                   className={`
@@ -281,9 +297,38 @@ export const TaskItem = memo(function TaskItem({
                       d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" 
                     />
                   </svg>
-                  {formatDate(task.dueDate)}
+                  {formatDateTime(task.dueDate)}
                   {overdue && ' (已过期)'}
                   {dueSoon && ' (即将到期)'}
+                </span>
+              )}
+
+              {/* 提醒设置 */}
+              {task.dueDate && task.reminderOption && task.reminderOption !== ReminderOption.NONE && (
+                <span 
+                  className={`
+                    inline-flex items-center text-xs
+                    ${task.notificationSent 
+                      ? 'text-gray-400 dark:text-gray-500' 
+                      : 'text-blue-500 dark:text-blue-400'
+                    }
+                  `}
+                  title={task.notificationSent ? '已提醒' : REMINDER_LABELS[task.reminderOption]}
+                >
+                  <svg 
+                    className="w-3.5 h-3.5 mr-1" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      strokeWidth={2} 
+                      d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" 
+                    />
+                  </svg>
+                  {task.notificationSent ? '已提醒' : REMINDER_LABELS[task.reminderOption]}
                 </span>
               )}
             </div>
