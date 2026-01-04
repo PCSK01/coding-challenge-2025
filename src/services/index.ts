@@ -11,3 +11,10 @@ export {
   isValidTitle,
   isValidDueDate
 } from './taskService';
+export {
+  NotificationService,
+  notificationService,
+  type NotificationPermissionStatus,
+  type InAppReminderCallback,
+  type NotificationServiceConfig
+} from './notificationService';
